@@ -1,0 +1,7 @@
+CSC 110,Fundamentals of Programming: I,201709,Jens Weber,200
+CSC 110,Fundamentals of Programming: I,201801,LillAnne Jackson,150
+CSC 115,Fundamentals of Programming: II,201709,Tibor van Rooij,100,CSC 110
+CSC 115,Fundamentals of Programming: II,201801,Mike Zastre,200,CSC 110
+MATH 122,Logic and Fundamentals,201709,Gary McGillivray,100
+MATH 122,Logic and Fundamentals,201801,Gary McGillivray,100
+CSC 225,Algorithms and Data Structures: I,201805,Bill Bird,100,CSC 115,MATH 122

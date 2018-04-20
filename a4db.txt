@@ -1,0 +1,179 @@
+drop table if exists prereqs;
+drop table if exists course_offering;
+--drop table if exists grades;
+drop table if exists enrollments;
+drop table if exists students;
+drop function if exists ignore_dupes();
+drop function if exists check_delete();
+drop function if exists capacity_check();
+drop function if exists min_grade_check();
+drop function if exists check_enrollments_dupes();
+drop function if exists ignore_students();
+
+create table students(
+    student_name varchar(255) check(length(student_name) > 0),
+    student_id varchar(9) check(length(student_id) = 9) primary key not null
+);
+
+
+create table course_offering( 
+	course_code varchar(10) check(length(course_code) > 0) not null,
+	course_name varchar(128) check(length(course_name) > 0) not null,
+	term_code integer,
+    instructor varchar(128) check(length(instructor) > 0) not null,
+    max_capacity integer check(max_capacity > 0),
+    primary key(term_code, course_code)
+);
+    
+--insert into prereqs values('CSC 115', 201709, 'CSC 110');
+
+--select * from prereqs
+
+create table prereqs(
+	course_code varchar(10) check(length(course_code) > 0) not null,
+    term_code integer,
+    prereq varchar(10),
+    primary key(term_code, course_code, prereq),
+    foreign key(term_code, course_code) references course_offering(term_code, course_code)
+);
+
+create table enrollments(
+	student_id varchar(9),
+	student_name varchar(255),
+	course_code varchar(10),
+	term_code integer,
+	grade integer check(grade <= 100),
+	primary key(student_id, course_code, term_code)
+	--foreign key(student_id) references students(student_id)
+);
+
+create function ignore_dupes()
+returns trigger as
+$BODY$
+begin
+if (select count(*) 
+	from prereqs 
+	where (course_code = new.course_code and term_code = new.term_code and prereq = new.prereq)) > 0
+then 
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+create function ignore_students()
+returns trigger as
+$BODY$
+begin
+if (select count(*) 
+	from students 
+	where (student_id = new.student_id and student_name = new.student_name)) > 0
+then 
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+create function check_delete()
+returns trigger as
+$BODY$
+begin
+if (select count(*) 
+	from prereqs 
+	where (student_name = new.student_name and student_id = new.student_id)) > 0
+then 
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+create function check_enrollments_dupes()
+returns trigger as
+$BODY$
+begin
+if (select count(*) 
+	from enrollments 
+	where (student_id = new.student_id and student_name = new.student_name and course_code = new.course_code and term_code = new.term_code)) > 0
+then 
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+
+--select count(*) as student_count, max_capacity, course_code, term_code from course_offering natural join enrollments
+--group by course_code, term_code, max_capacity having course_code = 'CSC 115';
+
+--insert into enrollments values('V00111111','Henry','MATH 122', 201709, 32);
+
+create function capacity_check()
+returns trigger as
+$BODY$
+begin
+if (select student_count from (select count(*) as student_count, max_capacity from course_offering natural join enrollments
+	group by course_code, term_code, max_capacity having course_code = new.course_code and term_code = new.term_code) as T) >= (select max_capacity from (select count(*) as student_count, max_capacity from course_offering natural join enrollments
+	group by course_code, term_code, max_capacity having course_code = new.course_code and term_code = new.term_code) as T)
+then 
+	raise exception 'course full';
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+--select grade from prereqs natural join enrollments where course_code = new.course_code and term_code = new.term_code and student_id = new.student_id and grade < 50
+
+--select * from enrollments natural join prereqs 
+
+create function min_grade_check()
+returns trigger as
+$BODY$
+begin
+if (select grade from prereqs natural join enrollments where course_code = new.course_code and term_code = new.term_code and student_id = new.student_id and grade < 50) is not null
+then 
+	raise exception 'prereq not satisfied %, %, %', new.student_id, new.course_code, new.term_code;
+	return NULL;
+end if;
+return new;
+end
+$BODY$
+language plpgsql;
+
+
+create trigger duplicate_prereqs
+	before insert on prereqs
+	for each row 
+	execute procedure ignore_dupes();
+
+create trigger duplicate_students
+	before insert on students
+	for each row 
+	execute procedure ignore_students();
+
+create trigger cant_delete
+	before delete on students
+	for each row 
+	execute procedure check_delete();
+
+create trigger enrol_constraints
+	before insert on enrollments
+	for each row 
+	execute procedure check_enrollments_dupes();
+
+create trigger max_capacity
+	before insert on enrollments
+	for each row 
+	execute procedure capacity_check();
+	
+create trigger min_grade
+	before insert on enrollments
+	for each row 
+	execute procedure min_grade_check();
